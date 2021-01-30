@@ -1,5 +1,3 @@
-import re
-import pprint
 from bookdb import BookDB
 
 DB = BookDB()
@@ -7,6 +5,8 @@ DB = BookDB()
 
 def book(book_id):
     book = DB.title_info(book_id)
+    if not book:
+        raise NameError
     return "\n".join(["<html>",
                       "<head>",
                       f"<title>{book.get('title')}</title>",
@@ -15,12 +15,11 @@ def book(book_id):
                       "<body>",
                       f"<p><b>Author: </b>{book.get('author')}</p>",
                       f"<p><b>Publisher: </b>{book.get('publisher')}</p>",
-                      f"<p><b>ISDN: </b>{book.get('isdn')}</p>",
+                      f"<p><b>ISBN: </b>{book.get('isbn')}</p>",
                       "<a href='/'>Home</a>"
                       "</body>",
                       "</html>",
                       ])
-
 
 def books():
     """get the book titles from the database and put them into html"""
@@ -43,23 +42,48 @@ def books():
                       "</html>",
                       ])
 
-def application(environ, start_response):
-    status = "200 OK"
 
-    if environ.get('REQUEST_METHOD') == "GET":
-        # only two valid path formats
-        if environ.get('PATH_INFO') == "/":
-            # the root path
-            body = books()
-        elif re.match("/book/id\d+", environ.get('PATH_INFO')):
-            # the book path
-            body = book(book_id=environ.get('PATH_INFO').split("/")[-1])
-        else:
-            # bad path
-            status = "404 Not Found"
-            body = "NOT FOUND"
-    else:
-        body = "INVALID REQUEST"
+def responce_404():
+    return "404 Not Found", "NOT FOUND"
+
+
+def responce_500():
+    "misc errors"
+    return "500 Server Error", "INTERNAL SERVER ERROR"
+
+
+def resolve_path(path):
+    funcs = {'': books,
+             'book': book,
+             }
+
+    path = path.strip('/').split('/')
+
+    func_name = path[0]
+    args = path[1:]
+
+    try:
+        func = funcs[func_name]
+    except KeyError:
+        raise NameError
+
+    return func, args
+
+
+def application(environ, start_response):
+
+    try:
+        request_path = environ.get('PATH_INFO', "")
+        if not request_path:
+            raise NameError
+        func, args = resolve_path(request_path)
+        status = "200 OK"
+        body = func(*args)
+    except NameError:
+        status, body = responce_404()
+    except Exception as e:
+        status, body = responce_500()
+        body += f"<span>{str(e)}</span>"
 
     response_headers = [('Content-Type', 'text/html'),
                         ]
